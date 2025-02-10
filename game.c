@@ -2,6 +2,7 @@
 #include <SDL2/SDL_image.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <time.h>
 
 // Ukuran layar
@@ -13,6 +14,7 @@ typedef struct {
     int x, y;
     int width, height;
     SDL_Texture* texture;
+    double angle; // Untuk rotasi ikan
 } Fish;
 
 // Fungsi untuk menginisialisasi SDL dan membuat window
@@ -53,10 +55,51 @@ SDL_Texture* loadTexture(const char* path, SDL_Renderer* renderer) {
     return newTexture;
 }
 
-// Fungsi untuk menggambar ikan
+// Fungsi untuk menggambar ikan dengan rotasi
 void renderFish(SDL_Renderer* renderer, Fish* fish) {
     SDL_Rect destRect = { fish->x, fish->y, fish->width, fish->height };
-    SDL_RenderCopy(renderer, fish->texture, NULL, &destRect);
+    SDL_RenderCopyEx(renderer, fish->texture, NULL, &destRect, fish->angle, NULL, SDL_FLIP_NONE);
+}
+
+// Fungsi untuk menghitung jarak antara dua titik
+float distance(int x1, int y1, int x2, int y2) {
+    return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+}
+
+// Fungsi untuk menggerakkan predator (AI)
+void movePredator(Fish* predator, Fish* player) {
+    // Prediksi arah menuju pemain
+    float dist = distance(predator->x, predator->y, player->x, player->y);
+    if (dist > 0) {
+        int dx = player->x - predator->x;
+        int dy = player->y - predator->y;
+        float angle = atan2(dy, dx);
+        
+        // Gerakkan predator ke arah pemain
+        predator->x += (int)(cos(angle) * 3); // Kecepatan predator 3
+        predator->y += (int)(sin(angle) * 3);
+        
+        // Set angle untuk rotasi predator
+        predator->angle = angle * 180 / M_PI; // Mengkonversi radian ke derajat
+    }
+}
+
+// Fungsi untuk menggerakkan prey (AI acak)
+void movePrey(Fish* prey) {
+    // Gerakkan prey acak dalam batas layar
+    int randomMove = rand() % 4;
+    switch (randomMove) {
+        case 0: prey->x += 2; break; // bergerak ke kanan
+        case 1: prey->x -= 2; break; // bergerak ke kiri
+        case 2: prey->y += 2; break; // bergerak ke bawah
+        case 3: prey->y -= 2; break; // bergerak ke atas
+    }
+
+    // Pastikan prey tetap berada dalam layar
+    if (prey->x < 0) prey->x = 0;
+    if (prey->x > SCREEN_WIDTH - prey->width) prey->x = SCREEN_WIDTH - prey->width;
+    if (prey->y < 0) prey->y = 0;
+    if (prey->y > SCREEN_HEIGHT - prey->height) prey->y = SCREEN_HEIGHT - prey->height;
 }
 
 // Fungsi utama
@@ -71,9 +114,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Memuat gambar
-    Fish player = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 50, 50, loadTexture("player.png", renderer) };
-    Fish prey = { rand() % SCREEN_WIDTH, rand() % SCREEN_HEIGHT, 30, 30, loadTexture("prey.png", renderer) };
-    Fish predator = { rand() % SCREEN_WIDTH, rand() % SCREEN_HEIGHT, 70, 70, loadTexture("predator.png", renderer) };
+    Fish player = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 50, 50, loadTexture("player.png", renderer), 0 };
+    Fish prey = { rand() % SCREEN_WIDTH, rand() % SCREEN_HEIGHT, 30, 30, loadTexture("prey.png", renderer), 0 };
+    Fish predator = { rand() % SCREEN_WIDTH, rand() % SCREEN_HEIGHT, 70, 70, loadTexture("predator.png", renderer), 0 };
     
     if (player.texture == NULL || prey.texture == NULL || predator.texture == NULL) {
         printf("Gagal memuat gambar ikan.\n");
@@ -82,8 +125,6 @@ int main(int argc, char* argv[]) {
 
     SDL_Event e;
     int quit = 0;
-    const int SPEED = 5;
-    const int PREDATOR_SPEED = 3;
 
     // Loop game
     while (!quit) {
@@ -93,24 +134,15 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Menggerakkan ikan pemain dengan tombol panah
-        const Uint8* currentKeyStates = SDL_GetKeyboardState(NULL);
-        if (currentKeyStates[SDL_SCANCODE_UP]) {
-            player.y -= SPEED;
-        }
-        if (currentKeyStates[SDL_SCANCODE_DOWN]) {
-            player.y += SPEED;
-        }
-        if (currentKeyStates[SDL_SCANCODE_LEFT]) {
-            player.x -= SPEED;
-        }
-        if (currentKeyStates[SDL_SCANCODE_RIGHT]) {
-            player.x += SPEED;
-        }
+        // Mengambil posisi mouse untuk pergerakan player
+        int mouseX, mouseY;
+        SDL_GetMouseState(&mouseX, &mouseY);
+        player.x = mouseX - player.width / 2;
+        player.y = mouseY - player.height / 2;
 
-        // Menggerakkan ikan predator (untuk contoh, bergerak acak)
-        predator.x += (rand() % 3 - 1) * PREDATOR_SPEED;
-        predator.y += (rand() % 3 - 1) * PREDATOR_SPEED;
+        // Menggerakkan AI
+        movePredator(&predator, &player);
+        movePrey(&prey);
 
         // Mengecek apakah ikan pemain memakan ikan prey
         SDL_Rect playerRect = { player.x, player.y, player.width, player.height };
